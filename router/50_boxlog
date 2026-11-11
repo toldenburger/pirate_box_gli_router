@@ -1,0 +1,18 @@
+#!/bin/sh
+# Goes to /etc/hotplug.d/dhcp/50_boxlog on the router. OpenWrt runs it on every DHCP lease
+# change with ACTION (add/update/remove/old), MACADDR, IPADDR in the environment.
+# Only visitor-network (192.168.60.x) joins/leaves are logged; MAC addresses are hashed.
+# No "exit": hotplug scripts may be sourced, so everything stays inside if/case blocks.
+
+BASE=${PB_BASE:-/mnt/usb}
+if [ -d "$BASE/box_lib" ]; then
+	case "$IPADDR" in
+	192.168.60.*)
+		. "$BASE/box_lib/common.sh"
+		case "$ACTION" in
+		add)    log_event join  "$(device_id "$MACADDR")" "ip=$IPADDR" ;;
+		remove) log_event leave "$(device_id "$MACADDR")" "ip=$IPADDR" ;;
+		esac
+		;;
+	esac
+fi

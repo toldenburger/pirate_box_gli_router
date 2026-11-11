@@ -1,0 +1,36 @@
+#!/bin/sh
+# Owner-only: sync the stick and power the router off. Called from admin/shutdown.html.
+# POST body (text/plain): line 1 = secret key from box_data/shutdown_key.
+# The reply is sent first, then a detached job waits 3 s, syncs and halts.
+
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+BASE=$(cd "$ROOT/.." && pwd)
+. "$BASE/box_lib/common.sh"
+
+reply() {
+	printf 'Status: %s\r\nContent-Type: text/plain\r\nCache-Control: no-store\r\n\r\n%s\n' "$1" "$2"
+	exit 0
+}
+
+[ "$REQUEST_METHOD" = POST ] || reply "405 Method Not Allowed" "POST only"
+
+len=${CONTENT_LENGTH:-0}
+case $len in ''|*[!0-9]*) len=0 ;; esac
+[ "$len" -gt 0 ] && [ "$len" -le 100 ] || reply "400 Bad Request" "bad length"
+key=$(head -c "$len" | sed -n 1p)
+
+[ -s "$DATA/shutdown_key" ] || reply "403 Forbidden" "no key set on the box"
+if [ "$key" != "$(cat "$DATA/shutdown_key")" ]; then
+	log_event shutdown_denied "$(client_dev)" ""
+	reply "403 Forbidden" "wrong key"
+fi
+
+log_event shutdown "$(client_dev)" ""
+if [ -z "$PB_NO_POWEROFF" ]; then
+	# Detached job (own session, started in /): after the reply is sent it stops the web server
+	# (it holds files open on the stick), syncs, unmounts the stick so ext4 is marked clean
+	# (falls back to read-only), then powers off. "sync" alone leaves the stick marked dirty
+	# and the next boot has to replay the journal.
+	setsid sh -c 'cd /; sleep 3; /etc/init.d/box_web stop; sync; umount /mnt/usb || mount -o remount,ro /mnt/usb; sync; poweroff' >/dev/null 2>&1 </dev/null &
+fi
+reply "200 OK" "shutting down"

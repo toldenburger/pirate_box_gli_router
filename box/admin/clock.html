@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Set clock</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+  <h1>Set clock</h1>
+  <p id="out" class="note">Working...</p>
+  <p class="note">Owner only. Open this page from the home-screen shortcut after powering the box on.</p>
+</main>
+<script>
+// The secret key sits in the part of the link after "#", e.g. clock.html#KEY.
+// Browsers do not send that part to the server in the page request.
+const out = document.querySelector('#out');
+const key = decodeURIComponent(location.hash.slice(1));
+if (!key) {
+  out.textContent = 'No key in the link.';
+} else {
+  fetch('/cgi-bin/setclock', {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: key + '\n' + Math.floor(Date.now() / 1000)
+  }).then(async (r) => {
+    out.textContent = r.ok
+      ? 'Clock set to ' + new Date().toLocaleString() + '.'
+      : 'Failed: ' + (await r.text()).trim();
+  }).catch(() => { out.textContent = 'Could not reach the box.'; });
+}
+</script>
+</body>
+</html>

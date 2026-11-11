@@ -1,0 +1,43 @@
+#!/bin/sh
+# Tiny chat. GET ?since=N lists messages with id > N, POST adds one.
+# POST body (text/plain): first line = nickname, rest = message.
+# Log lines: id<TAB>name<TAB>text, kept outside the web root.
+
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+BASE=$(cd "$ROOT/.." && pwd)
+. "$BASE/box_lib/common.sh"
+LOG=$DATA/chat.log
+MAXLINES=200
+
+touch "$LOG"
+
+printf 'Content-Type: text/plain; charset=utf-8\r\n'
+printf 'Cache-Control: no-store\r\n\r\n'
+
+case "$REQUEST_METHOD" in
+POST)
+	len=${CONTENT_LENGTH:-0}
+	case $len in ''|*[!0-9]*) len=0 ;; esac
+	[ "$len" -gt 1000 ] && len=1000
+	body=$(head -c "$len")
+	name=$(printf '%s\n' "$body" | sed -n 1p | tr -d '\t\r' | cut -c1-20)
+	text=$(printf '%s\n' "$body" | sed -n '2,$p' | tr '\n\t\r' '   ' | sed 's/^ *//; s/ *$//' | cut -c1-300)
+	[ -n "$text" ] || exit 0
+	[ -n "$name" ] || name=anon
+	last=$(tail -n 1 "$LOG" | cut -f1)
+	id=$(( ${last:-0} + 1 ))
+	printf '%s\t%s\t%s\n' "$id" "$name" "$text" >> "$LOG"
+	log_event chat_post "$(client_dev)" "id=$id"
+	if [ "$(wc -l < "$LOG")" -gt "$MAXLINES" ]; then
+		tail -n "$MAXLINES" "$LOG" > "$LOG.tmp" && mv "$LOG.tmp" "$LOG"
+	fi
+	echo ok
+	;;
+*)
+	since=${QUERY_STRING#since=}
+	case $since in ''|*[!0-9]*) since=0 ;; esac
+	last=$(tail -n 1 "$LOG" | cut -f1)
+	echo "#${last:-0}"
+	awk -F'\t' -v s="$since" '$1 + 0 > s + 0' "$LOG"
+	;;
+esac

@@ -1,0 +1,39 @@
+#!/bin/sh
+# Owner-only: set the router clock from your phone (the router has no battery clock).
+# POST body (text/plain): line 1 = secret key, line 2 = unix time in seconds.
+# The key lives in box_data/clock_key (never in the web root).
+
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+BASE=$(cd "$ROOT/.." && pwd)
+. "$BASE/box_lib/common.sh"
+
+reply() {
+	printf 'Status: %s\r\nContent-Type: text/plain\r\nCache-Control: no-store\r\n\r\n%s\n' "$1" "$2"
+	exit 0
+}
+
+[ "$REQUEST_METHOD" = POST ] || reply "405 Method Not Allowed" "POST only"
+
+len=${CONTENT_LENGTH:-0}
+case $len in ''|*[!0-9]*) len=0 ;; esac
+[ "$len" -gt 0 ] && [ "$len" -le 200 ] || reply "400 Bad Request" "bad length"
+body=$(head -c "$len")
+key=$(printf '%s\n' "$body" | sed -n 1p)
+epoch=$(printf '%s\n' "$body" | sed -n 2p)
+
+[ -s "$DATA/clock_key" ] || reply "403 Forbidden" "no key set on the box"
+if [ "$key" != "$(cat "$DATA/clock_key")" ]; then
+	log_event clock_denied "$(client_dev)" ""
+	reply "403 Forbidden" "wrong key"
+fi
+
+case $epoch in ''|*[!0-9]*) reply "400 Bad Request" "bad time" ;; esac
+# plausible window: 2026-11-01 .. 2036-01-01
+[ "${#epoch}" -eq 10 ] && [ "$epoch" -ge 1793491200 ] && [ "$epoch" -le 2082758400 ] \
+	|| reply "400 Bad Request" "time out of range"
+
+old=$(date +%s)
+[ -n "$PB_NO_SET_CLOCK" ] || date -u -s "@$epoch" >/dev/null 2>&1 || reply "500 Internal Server Error" "could not set clock"
+touch /tmp/box_clock_ok
+log_event clock_set "$(client_dev)" "from=$old to=$epoch"
+reply "200 OK" "clock set"

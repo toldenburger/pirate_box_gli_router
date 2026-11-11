@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Files - Pirate Box</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+  <a class="back" href="/">&larr; Back</a>
+  <h1>Files</h1>
+
+  <h2>Ebooks &amp; files</h2>
+  <ul class="list" id="main_list"></ul>
+
+  <h2>Shared by visitors</h2>
+  <ul class="list" id="upload_list"></ul>
+
+  <h2>Share a file</h2>
+  <div class="upload_box">
+    <input type="file" id="file">
+    <button id="send" type="button">Upload</button>
+    <progress id="bar" value="0" max="100" hidden></progress>
+    <div id="status"></div>
+    <div class="note">Up to 50 MB per file. Everyone on this box can see and download what you upload.</div>
+  </div>
+</main>
+
+<script>
+const MAX = 50 * 1024 * 1024;
+const mainList = document.querySelector('#main_list');
+const uploadList = document.querySelector('#upload_list');
+const fileIn = document.querySelector('#file');
+const sendBtn = document.querySelector('#send');
+const bar = document.querySelector('#bar');
+const statusEl = document.querySelector('#status');
+
+function human(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1048576) return (n / 1024).toFixed(0) + ' KB';
+  return (n / 1048576).toFixed(1) + ' MB';
+}
+
+function row(path, size) {
+  const li = document.createElement('li');
+  const a = document.createElement('a');
+  a.href = '/files/' + path.split('/').map(encodeURIComponent).join('/');
+  a.textContent = path.replace(/^uploads\//, '');
+  a.download = '';
+  const s = document.createElement('span');
+  s.className = 'size';
+  s.textContent = human(size);
+  li.append(a, s);
+  return li;
+}
+
+function empty(el, msg) {
+  const li = document.createElement('li');
+  li.className = 'empty';
+  li.textContent = msg;
+  el.append(li);
+}
+
+async function load() {
+  mainList.replaceChildren();
+  uploadList.replaceChildren();
+  try {
+    const r = await fetch('/cgi-bin/list?dir=files', { cache: 'no-store' });
+    const lines = (await r.text()).split('\n').filter(Boolean);
+    for (const line of lines) {
+      const [path, size] = line.split('\t');
+      (path.startsWith('uploads/') ? uploadList : mainList).append(row(path, +size));
+    }
+  } catch (e) {
+    empty(mainList, 'Could not load the list.');
+    return;
+  }
+  if (!mainList.children.length) empty(mainList, 'Nothing here yet.');
+  if (!uploadList.children.length) empty(uploadList, 'No uploads yet. Be the first!');
+}
+
+sendBtn.addEventListener('click', () => {
+  const f = fileIn.files[0];
+  if (!f) { statusEl.textContent = 'Pick a file first.'; return; }
+  if (f.size > MAX) { statusEl.textContent = 'That file is over 50 MB.'; return; }
+  const safe = f.name.replace(/[^A-Za-z0-9._-]/g, '_');
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/cgi-bin/upload?name=' + safe);
+  xhr.upload.onprogress = (e) => {
+    if (e.lengthComputable) bar.value = Math.round(100 * e.loaded / e.total);
+  };
+  xhr.onload = () => {
+    sendBtn.disabled = false;
+    bar.hidden = true;
+    if (xhr.status === 200) {
+      statusEl.textContent = 'Uploaded, thanks!';
+      fileIn.value = '';
+      load();
+    } else {
+      statusEl.textContent = 'Upload failed: ' + xhr.responseText.trim();
+    }
+  };
+  xhr.onerror = () => {
+    sendBtn.disabled = false;
+    bar.hidden = true;
+    statusEl.textContent = 'Upload failed. Is the box still in range?';
+  };
+  sendBtn.disabled = true;
+  bar.value = 0;
+  bar.hidden = false;
+  statusEl.textContent = 'Uploading...';
+  xhr.send(f);
+});
+
+load();
+</script>
+</body>
+</html>

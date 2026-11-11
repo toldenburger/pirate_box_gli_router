@@ -1,0 +1,31 @@
+# Nothing in here may ever be committed: keys, logs, visitor data, build output.
+
+# secrets and keys
+*.jks
+*.keystore
+*_key
+.salt
+private/
+
+# runtime data from a box (logs contain visitor data; chat and uploads are visitors' content)
+box_data/
+box_log_archive/
+log_archive/
+*.log
+box/files/uploads/
+
+# your own media (copyright is yours to check; none is shipped in this repo)
+box/files/*
+box/media/*
+!box/files/.gitkeep
+!box/media/.gitkeep
+
+# Android build output (build it yourself: android/build.sh)
+*.apk
+*.idsig
+android/build/
+
+# editor / OS noise
+*~
+.DS_Store
+__pycache__/

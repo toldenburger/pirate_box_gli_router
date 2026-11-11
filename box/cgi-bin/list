@@ -1,0 +1,24 @@
+#!/bin/sh
+# Lists files in files/ or media/ as: relative_path<TAB>size_in_bytes
+# Hidden files (starting with a dot) are skipped.
+
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+
+case "$QUERY_STRING" in
+dir=files) D=files ;;
+dir=media) D=media ;;
+*)
+	printf 'Status: 400 Bad Request\r\nContent-Type: text/plain\r\n\r\nbad dir\n'
+	exit 0
+	;;
+esac
+
+printf 'Content-Type: text/plain; charset=utf-8\r\n'
+printf 'Cache-Control: no-store\r\n\r\n'
+
+cd "$ROOT/$D" 2>/dev/null || exit 0
+find . -type f ! -path '*/.*' | sort | while IFS= read -r f; do
+	f=${f#./}
+	# size from the directory entry: busybox "wc -c" would read the whole file
+	printf '%s\t%s\n' "$f" "$(ls -ln -- "$f" | awk '{ print $5 }')"
+done

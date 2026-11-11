@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shut down</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+  <h1>Shut down</h1>
+  <p class="note">Owner only. Saves everything, then stops the box. Wait about 15 seconds after it says done, then unplug the power.</p>
+  <p><button id="go" type="button">Shut down the box</button></p>
+  <p id="out" class="note"></p>
+</main>
+<script>
+// The secret key sits in the part of the link after "#", e.g. shutdown.html#KEY.
+const out = document.querySelector('#out');
+const go = document.querySelector('#go');
+const key = decodeURIComponent(location.hash.slice(1));
+if (!key) { go.disabled = true; out.textContent = 'No key in the link.'; }
+
+go.addEventListener('click', async () => {
+  if (!confirm('Shut the box down now? Everyone will be disconnected.')) return;
+  go.disabled = true;
+  try {
+    const r = await fetch('/cgi-bin/shutdown', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: key + '\n'
+    });
+    out.textContent = r.ok
+      ? 'Shutting down. Wait about 15 seconds, then unplug the power.'
+      : 'Failed: ' + (await r.text()).trim();
+    if (!r.ok) go.disabled = false;
+  } catch (e) {
+    out.textContent = 'Could not reach the box (it may already be off).';
+  }
+});
+</script>
+</body>
+</html>

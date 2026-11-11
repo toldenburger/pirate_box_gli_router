@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Media - Pirate Box</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+  <a class="back" href="/">&larr; Back</a>
+  <h1>Media</h1>
+  <div id="out"></div>
+</main>
+
+<script>
+const out = document.querySelector('#out');
+const KINDS = {
+  audio: ['mp3', 'ogg', 'oga', 'opus', 'flac', 'm4a', 'aac', 'wav'],
+  image: ['jpg', 'jpeg', 'png', 'gif', 'webp'],
+  video: ['mp4', 'webm', 'm4v']
+};
+
+function kind(path) {
+  const ext = path.split('.').pop().toLowerCase();
+  for (const k in KINDS) if (KINDS[k].includes(ext)) return k;
+  return 'other';
+}
+
+function url(path) {
+  return '/media/' + path.split('/').map(encodeURIComponent).join('/');
+}
+
+function section(title) {
+  const h = document.createElement('h2');
+  h.textContent = title;
+  out.append(h);
+}
+
+function track(tag, path) {
+  const d = document.createElement('div');
+  d.className = 'track';
+  const label = document.createElement('div');
+  label.textContent = path;
+  const el = document.createElement(tag);
+  el.controls = true;
+  el.preload = 'none';
+  el.src = url(path);
+  d.append(label, el);
+  out.append(d);
+}
+
+(async () => {
+  let paths = [];
+  try {
+    const r = await fetch('/cgi-bin/list?dir=media', { cache: 'no-store' });
+    paths = (await r.text()).split('\n').filter(Boolean).map((l) => l.split('\t')[0]);
+  } catch (e) {
+    out.textContent = 'Could not load the list.';
+    return;
+  }
+  if (!paths.length) { out.textContent = 'Nothing here yet.'; return; }
+
+  const groups = { audio: [], image: [], video: [], other: [] };
+  for (const p of paths) groups[kind(p)].push(p);
+
+  if (groups.audio.length) {
+    section('Music');
+    // one collapsible section per top-level folder (artist); players are made when opened
+    const byFolder = {};
+    for (const p of groups.audio) {
+      const i = p.indexOf('/');
+      (byFolder[i < 0 ? 'Other' : p.slice(0, i)] ||= []).push(p);
+    }
+    for (const name of Object.keys(byFolder).sort()) {
+      const det = document.createElement('details');
+      const sum = document.createElement('summary');
+      sum.textContent = name + ' (' + byFolder[name].length + ')';
+      det.append(sum);
+      det.addEventListener('toggle', () => {
+        if (!det.open || det.dataset.filled) return;
+        det.dataset.filled = '1';
+        for (const p of byFolder[name]) {
+          const d = document.createElement('div');
+          d.className = 'track';
+          const label = document.createElement('div');
+          label.textContent = p.split('/').pop().replace(/\.[^.]+$/, '');
+          const el = document.createElement('audio');
+          el.controls = true;
+          el.preload = 'none';
+          el.src = url(p);
+          d.append(label, el);
+          det.append(d);
+        }
+      });
+      out.append(det);
+    }
+  }
+  if (groups.video.length) { section('Video'); groups.video.forEach((p) => track('video', p)); }
+  if (groups.image.length) {
+    section('Pictures');
+    const g = document.createElement('div');
+    g.className = 'gallery';
+    for (const p of groups.image) {
+      const a = document.createElement('a');
+      a.href = url(p);
+      const img = document.createElement('img');
+      img.loading = 'lazy';
+      img.alt = p;
+      img.src = url(p);
+      a.append(img);
+      g.append(a);
+    }
+    out.append(g);
+  }
+  if (groups.other.length) {
+    section('Other');
+    const ul = document.createElement('ul');
+    ul.className = 'list';
+    for (const p of groups.other) {
+      const li = document.createElement('li');
+      const a = document.createElement('a');
+      a.href = url(p);
+      a.textContent = p;
+      li.append(a);
+      ul.append(li);
+    }
+    out.append(ul);
+  }
+})();
+</script>
+</body>
+</html>

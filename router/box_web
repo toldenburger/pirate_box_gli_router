@@ -1,0 +1,16 @@
+#!/bin/sh /etc/rc.common
+# Goes to /etc/init.d/box_web on the router. Runs the box web server (lighttpd) for the
+# visitor network, started as soon as the USB stick is mounted at /mnt/usb. If the stick is
+# missing it just waits, so nothing is exposed and nothing fails.
+
+START=99
+USE_PROCD=1
+CONF=/mnt/usb/box_conf/lighttpd_box.conf
+
+start_service() {
+	procd_open_instance
+	# once the stick is there: write a "boot" marker to the event log, then run the web server
+	procd_set_param command /bin/sh -c "while [ ! -f $CONF ]; do sleep 2; done; mkdir -p /mnt/usb/box_data/tmp; BASE=/mnt/usb; . /mnt/usb/box_lib/common.sh; log_event boot - 'web server start'; exec /usr/sbin/lighttpd -D -f $CONF"
+	procd_set_param respawn 3600 5 0
+	procd_close_instance
+}

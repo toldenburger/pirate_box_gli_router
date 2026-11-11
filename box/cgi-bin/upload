@@ -1,0 +1,52 @@
+#!/bin/sh
+# Upload: POST /cgi-bin/upload?name=<file name>, body = the raw file bytes.
+# The name is cleaned here again (the browser already did it once).
+# Files land in files/uploads/. Web-active types get ".txt" added so a
+# visitor cannot upload a page that runs in other people's browsers.
+
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+BASE=$(cd "$ROOT/.." && pwd)
+. "$BASE/box_lib/common.sh"
+UP=$ROOT/files/uploads
+MAX=${PB_MAX_UPLOAD:-52428800}
+RESERVE_KB=2048
+
+reply() {
+	printf 'Status: %s\r\nContent-Type: text/plain\r\nCache-Control: no-store\r\n\r\n%s\n' "$1" "$2"
+	exit 0
+}
+
+[ "$REQUEST_METHOD" = POST ] || reply "405 Method Not Allowed" "POST only"
+
+len=${CONTENT_LENGTH:-0}
+case $len in ''|*[!0-9]*) reply "400 Bad Request" "bad length" ;; esac
+[ "$len" -gt 0 ] || reply "400 Bad Request" "empty file"
+[ "$len" -le "$MAX" ] || reply "413 Payload Too Large" "file is too big"
+
+name=${QUERY_STRING#name=}
+name=$(printf '%s' "$name" | tr -c 'A-Za-z0-9._-' '_' | sed 's/^[._]*//' | cut -c1-100)
+[ -n "$name" ] || name=upload
+
+case $(printf '%s' "$name" | tr 'A-Z' 'a-z') in
+*.html|*.htm|*.xhtml|*.svg|*.js|*.xml|*.php) name=$name.txt ;;
+esac
+
+mkdir -p "$UP"
+
+free_kb=$(df -k "$UP" | awk 'NR == 2 { print $4 }')
+need_kb=$(( len / 1024 + RESERVE_KB ))
+[ "${free_kb:-0}" -ge "$need_kb" ] || reply "507 Insufficient Storage" "the box is full"
+
+[ -e "$UP/$name" ] && name=$(date +%s)_$name
+
+tmp=$UP/.part.$$
+head -c "$len" > "$tmp"
+got=$(ls -ln -- "$tmp" | awk '{ print $5 }')   # not "wc -c": busybox would re-read the file
+if [ "$got" -ne "$len" ]; then
+	rm -f "$tmp"
+	reply "400 Bad Request" "upload was cut off"
+fi
+mv "$tmp" "$UP/$name"
+chmod 644 "$UP/$name"
+log_event upload "$(client_dev)" "name=$name size=$len"
+reply "200 OK" "ok $name"

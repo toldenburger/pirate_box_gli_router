@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chat - Pirate Box</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+  <a class="back" href="/">&larr; Back</a>
+  <h1>Chat</h1>
+  <p class="note">Everyone on this box can read this. Be nice. Only the last 200 messages are kept.</p>
+
+  <div id="log" aria-live="polite"></div>
+  <div id="status" class="note"></div>
+
+  <form id="form" autocomplete="off">
+    <input type="text" id="name" maxlength="20" placeholder="Your nickname">
+    <input type="text" id="text" maxlength="300" placeholder="Say something..." required>
+    <button type="submit">Send</button>
+  </form>
+</main>
+
+<script>
+const log = document.querySelector('#log');
+const form = document.querySelector('#form');
+const nameIn = document.querySelector('#name');
+const textIn = document.querySelector('#text');
+const statusEl = document.querySelector('#status');
+let since = 0;
+let timer = null;
+
+try { nameIn.value = localStorage.getItem('pb_name') || ''; } catch (e) {}
+
+function color(name) {
+  let h = 0;
+  for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 360;
+  return 'hsl(' + h + ' 70% 65%)';
+}
+
+function add(name, text) {
+  const row = document.createElement('div');
+  row.className = 'msg';
+  const who = document.createElement('b');
+  who.textContent = name;
+  who.style.color = color(name);
+  const what = document.createElement('span');
+  what.textContent = ' ' + text;
+  row.append(who, what);
+  log.append(row);
+}
+
+async function poll() {
+  clearTimeout(timer);
+  try {
+    const r = await fetch('/cgi-bin/chat?since=' + since, { cache: 'no-store' });
+    const lines = (await r.text()).split('\n');
+    const last = parseInt((lines.shift() || '#0').slice(1), 10) || 0;
+    if (last < since) {            // chat was cleared or reset: start over
+      since = 0;
+      log.replaceChildren();
+      return poll();
+    }
+    const stick = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+    for (const line of lines) {
+      if (!line) continue;
+      const [id, name, ...rest] = line.split('\t');
+      add(name, rest.join(' '));
+      since = Math.max(since, parseInt(id, 10) || 0);
+    }
+    if (stick) log.scrollTop = log.scrollHeight;
+    statusEl.textContent = '';
+  } catch (e) {
+    statusEl.textContent = 'Lost the box for a moment, retrying...';
+  }
+  timer = setTimeout(poll, document.hidden ? 10000 : 3000);
+}
+
+form.addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const name = nameIn.value.trim() || 'anon';
+  const text = textIn.value.trim();
+  if (!text) return;
+  try { localStorage.setItem('pb_name', name); } catch (e) {}
+  textIn.value = '';
+  try {
+    await fetch('/cgi-bin/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: name + '\n' + text
+    });
+  } catch (e) {
+    statusEl.textContent = 'Could not send, try again.';
+  }
+  poll();
+  log.scrollTop = log.scrollHeight;
+});
+
+poll();
+</script>
+</body>
+</html>

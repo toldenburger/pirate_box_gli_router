@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The box speaks plain HTTP. Allowed ONLY for its own address; everything else stays HTTPS-only.
+     If the box address ever changes, change it here AND in Prefs.BASE. -->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">192.168.60.1</domain>
+    </domain-config>
+</network-security-config>
